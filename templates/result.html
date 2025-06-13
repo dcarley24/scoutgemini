@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Snapshot Result</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Simple transition for the toggle icon */
+        .toggle-icon {
+            transition: transform 0.2s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900 p-4">
+    <div class="max-w-screen-sm mx-auto bg-white p-6 rounded-lg shadow-md">
+        <h1 class="text-xl font-bold mb-4">Snapshot Result</h1>
+
+        <!-- Prospect Snapshot Section -->
+        <div class="mb-4 border-b pb-4">
+            <h2 class="text-lg font-semibold cursor-pointer flex justify-between items-center" onclick="toggleSection('prospectDetails')">
+                <span>Prospect Snapshot</span>
+                <span class="toggle-icon transform rotate-0 text-gray-500 text-xl font-mono">-</span>
+            </h2>
+            <div id="prospectDetails" class="space-y-1 text-sm mt-2">
+                <p><strong>Name:</strong> {{ snapshot['name'].title() }}</p>
+                <p><strong>Role:</strong> {{ snapshot['persona'] }}</p>
+                <p><strong>Industry:</strong> {{ snapshot['industry'] }}</p>
+                <p><strong>Size:</strong> {{ snapshot['size'] }}</p>
+                <p><strong>Region:</strong> {{ snapshot['region'] }}</p>
+                <p><strong>Tags:</strong> {{ snapshot['tags'] }}</p>
+                <p><strong>Nudge:</strong> {{ snapshot['nudge'] if snapshot['nudge'] else 'None' }}</p>
+            </div>
+        </div>
+
+        <!-- AI-Generated Company Summary Section -->
+        <div class="mb-4">
+            <h2 class="text-lg font-semibold cursor-pointer flex justify-between items-center" onclick="toggleSection('summaryContent')">
+                <span>AI-Generated Company Summary</span>
+                <span class="toggle-icon transform rotate-0 text-gray-500 text-xl font-mono">+</span>
+            </h2>
+            <pre id="summaryContent" class="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap mt-2 hidden">{{ snapshot['summary'] }}</pre>
+        </div>
+
+        <!-- Initial Talking Points Section -->
+        <div class="mb-4">
+            <h2 class="text-lg font-semibold cursor-pointer flex justify-between items-center" onclick="toggleSection('discoveryContent')">
+                <span>Initial Talking Points</span>
+                <span class="toggle-icon transform rotate-0 text-gray-500 text-xl font-mono">+</span>
+            </h2>
+            <pre id="discoveryContent" class="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap mt-2 hidden">{{ snapshot['discovery'] }}</pre>
+        </div>
+
+        <!-- Debrief Section -->
+        <div class="border-t pt-6 mt-6">
+            <h2 class="text-lg font-semibold mb-2">Post-Meeting Debrief</h2>
+            <form id="debriefForm" action="{{ url_for('debrief', snapshot_id=snapshot['id']) }}" method="post">
+                <textarea name="raw_notes" class="w-full border rounded p-3 text-sm focus:ring-purple-500 focus:border-purple-500" rows="6" placeholder="Paste your messy, raw notes here...">{{ snapshot['raw_notes'] if snapshot['raw_notes'] }}</textarea>
+                <button type="submit" id="generateDebriefBtn" class="w-full sm:w-auto mt-2 bg-purple-600 text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm hover:bg-purple-700">
+                    Generate AI Debrief
+                </button>
+            </form>
+            
+            <div id="debriefOutput" class="mt-4 {% if not snapshot['debrief_summary'] %}hidden{% endif %}">
+                 <h3 class="text-md font-semibold mb-2">AI-Generated Summary</h3>
+                 <pre id="debriefSummaryContent" class="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap">{{ snapshot['debrief_summary'] if snapshot['debrief_summary'] }}</pre>
+            </div>
+             <div id="debriefError" class="hidden mt-2 text-sm text-red-600"></div>
+        </div>
+
+
+        <div class="flex flex-col sm:flex-row gap-3 mt-6 border-t pt-6">
+            <a href="{{ url_for('nudge', snapshot_id=snapshot['id']) }}"
+               class="text-center w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm hover:bg-blue-700">Nudge</a>
+            {% if not snapshot['pushed_to_hubspot'] %}
+            <form action="{{ url_for('push', snapshot_id=snapshot['id']) }}" method="post" class="w-full sm:w-auto">
+                <button type="submit" class="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm hover:bg-green-700">
+                    Push to HubSpot
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="text-center mt-6 text-sm">
+        <a href="{{ url_for('index') }}" class="text-blue-700 underline px-2">New</a> |
+        <a href="{{ url_for('history') }}" class="text-blue-700 underline px-2">History</a>
+    </div>
+
+    <script>
+        function toggleSection(elementId) {
+            const content = document.getElementById(elementId);
+            const icon = content.previousElementSibling.querySelector('.toggle-icon');
+            content.classList.toggle('hidden');
+            if (content.classList.contains('hidden')) {
+                icon.textContent = '+';
+            } else {
+                icon.textContent = '-';
+            }
+        }
+        
+        document.getElementById('debriefForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const button = document.getElementById('generateDebriefBtn');
+            const outputDiv = document.getElementById('debriefOutput');
+            const summaryContent = document.getElementById('debriefSummaryContent');
+            const errorDiv = document.getElementById('debriefError');
+
+            button.disabled = true;
+            button.textContent = 'Processing...';
+            errorDiv.classList.add('hidden');
+
+            try {
+                const formData = new FormData(form);
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    summaryContent.textContent = result.debrief_summary;
+                    outputDiv.classList.remove('hidden');
+                } else {
+                    errorDiv.textContent = result.error || 'An unknown error occurred.';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                errorDiv.textContent = 'A network error occurred. Please try again.';
+                errorDiv.classList.remove('hidden');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Generate AI Debrief';
+            }
+        });
+    </script>
+</body>
+</html>
+
